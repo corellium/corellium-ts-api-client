@@ -1,0 +1,53 @@
+# Managed by api-generation (templates/github/ts); overwritten on each public release.
+# Publishes @corellium/api-client to npmjs.org with npm trusted publishing (OIDC): no
+# npm token is stored anywhere. It runs when the GitLab push mirror delivers a vX.Y.Z
+# tag; npm only accepts OIDC from GitHub-hosted runners, so the upload lives here.
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Verify tag matches package version
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME#v}" != "$pkg" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}"
+            exit 1
+          fi
+          case "$pkg" in
+            *-*) echo "::error::refusing to publish prerelease ${pkg}"; exit 1 ;;
+          esac
+
+      - name: Install and build
+        run: npm install --no-audit --no-fund
+
+      - name: Publish
+        run: npm publish --access public
